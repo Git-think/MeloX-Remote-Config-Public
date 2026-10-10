@@ -1,0 +1,43 @@
+name: Sync latest.json from upstream
+
+# Copies v1/latest.json and v1/public-key.der from
+# lladlam/MeloX-Remote-Config-Public byte for byte: latest.json is an ECDSA
+# signed envelope, so it must never be edited here — a byte-identical copy
+# keeps verifying against the key pinned inside the app. v1/update.json is
+# deliberately NOT synced: it is maintained by this fork and points at
+# Git-think/MeloX-Android releases.
+
+on:
+  schedule:
+    - cron: "41 */6 * * *" # every 6 hours
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-latest
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Copy signed config from upstream
+        run: |
+          base="https://raw.githubusercontent.com/lladlam/MeloX-Remote-Config-Public/main"
+          curl -fsSL "$base/v1/latest.json" -o v1/latest.json
+          curl -fsSL "$base/v1/public-key.der" -o v1/public-key.der
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- v1/latest.json v1/public-key.der; then
+            echo "Already in sync with upstream."
+            exit 0
+          fi
+          git add v1/latest.json v1/public-key.der
+          git commit -m "chore: sync latest.json from upstream"
+          git push
